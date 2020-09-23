@@ -213,6 +213,17 @@ impl AppBuilder {
         self
     }
 
+    pub fn add_systems_to_stage_front(
+        &mut self,
+        stage_name: &'static str,
+        systems: Vec<Box<dyn System>>,
+    ) -> &mut Self {
+        for system in systems {
+            self.app.schedule.add_system_to_stage_front(stage_name, system);
+        }
+        self
+    }
+
     pub fn add_event<T>(&mut self) -> &mut Self
     where
         T: Send + Sync + 'static,

@@ -31,5 +31,9 @@ impl Plugin for TransformPlugin {
             // add transform systems to startup so the first update is "correct"
             .add_startup_systems(transform_systems())
             .add_systems_to_stage(stage::POST_UPDATE, transform_systems());
+
+            // TODO: DELETEME: It looks like this doesn't improve things, so it isn't the issue. -Nick 2020-09-18
+            // // // Add systems to the front of POST_UPDATE so that it updates BEFORE the render system. (In theory, this could fix an issue where there's perceived input latency due to an order-update issue where the render fails to account for the changed transform by a single frame?)
+            // // .add_systems_to_stage_front(stage::POST_UPDATE, transform_systems());
     }
 }

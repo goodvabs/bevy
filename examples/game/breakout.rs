@@ -12,6 +12,7 @@ fn main() {
         .add_resource(ClearColor(Color::rgb(0.7, 0.7, 0.7)))
         .add_startup_system(setup.system())
         .add_system(paddle_movement_system.system())
+        .add_system(paddle_input_color_system.system())
         .add_system(ball_collision_system.system())
         .add_system(ball_movement_system.system())
         .add_system(scoreboard_system.system())
@@ -175,6 +176,36 @@ fn paddle_movement_system(
         *translation.x_mut() += time.delta_seconds * direction * paddle.speed;
         // bound the paddle within the walls
         *translation.x_mut() = translation.x().min(380.0).max(-380.0);
+
+        // println!("Paddle x dir: {:?}", direction);
+    }
+}
+
+fn paddle_input_color_system(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut assets: ResMut<Assets<ColorMaterial>>,
+    mut query: Query<(&Paddle, &Handle<ColorMaterial>)>,
+) {
+    for (_paddle, mat_handle) in &mut query.iter() {
+        let mut dir = 0.0;
+        if keyboard_input.pressed(KeyCode::Left) {
+            dir -= 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::Right) {
+            dir += 1.0;
+        }
+
+        // println!("HI");
+
+        let material = assets.get_mut(&mat_handle).unwrap();
+
+        if dir != 0.0 {
+            material.color = Color::WHITE;
+            println!("Color to WHITE");
+        } else {
+            material.color = Color::rgb(0.2, 0.2, 0.8);
+            println!("Color to BLUE");
+        }
     }
 }
 

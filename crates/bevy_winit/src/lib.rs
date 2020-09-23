@@ -149,6 +149,8 @@ pub fn winit_runner(mut app: App) {
                     let mut keyboard_input_events =
                         app.resources.get_mut::<Events<KeyboardInput>>().unwrap();
                     keyboard_input_events.send(converters::convert_keyboard_input(input));
+
+                    // println!("Winit keyboard event: {:?}", input);
                 }
                 WindowEvent::CursorMoved { position, .. } => {
                     let mut cursor_moved_events =

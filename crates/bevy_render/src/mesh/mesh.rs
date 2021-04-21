@@ -15,7 +15,8 @@ use bevy_ecs::{
 };
 use bevy_math::*;
 use bevy_reflect::TypeUuid;
-use std::borrow::Cow;
+use bevy_utils::EnumVariantMeta;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use crate::pipeline::{InputStepMode, VertexAttribute, VertexBufferLayout};
 use bevy_utils::{HashMap, HashSet};
@@ -24,7 +25,7 @@ pub const INDEX_BUFFER_ASSET_INDEX: u64 = 0;
 pub const VERTEX_ATTRIBUTE_BUFFER_ID: u64 = 10;
 
 /// An array where each entry describes a property of a single vertex.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, EnumVariantMeta)]
 pub enum VertexAttributeValues {
     Float32(Vec<f32>),
     Sint32(Vec<i32>),

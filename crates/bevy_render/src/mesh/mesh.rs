@@ -24,19 +24,34 @@ pub const VERTEX_ATTRIBUTE_BUFFER_ID: u64 = 10;
 /// An array where each entry describes a property of a single vertex.
 #[derive(Clone, Debug)]
 pub enum VertexAttributeValues {
-    Float(Vec<f32>),
-    Int(Vec<i32>),
-    Uint(Vec<u32>),
-    Float2(Vec<[f32; 2]>),
-    Int2(Vec<[i32; 2]>),
-    Uint2(Vec<[u32; 2]>),
-    Float3(Vec<[f32; 3]>),
-    Int3(Vec<[i32; 3]>),
-    Uint3(Vec<[u32; 3]>),
-    Float4(Vec<[f32; 4]>),
-    Int4(Vec<[i32; 4]>),
-    Uint4(Vec<[u32; 4]>),
-    Uchar4Norm(Vec<[u8; 4]>),
+    Float32(Vec<f32>),
+    Sint32(Vec<i32>),
+    Uint32(Vec<u32>),
+    Float32x2(Vec<[f32; 2]>),
+    Sint32x2(Vec<[i32; 2]>),
+    Uint32x2(Vec<[u32; 2]>),
+    Float32x3(Vec<[f32; 3]>),
+    Sint32x3(Vec<[i32; 3]>),
+    Uint32x3(Vec<[u32; 3]>),
+    Float32x4(Vec<[f32; 4]>),
+    Sint32x4(Vec<[i32; 4]>),
+    Uint32x4(Vec<[u32; 4]>),
+    Sint16x2(Vec<[i16; 2]>),
+    Snorm16x2(Vec<[i16; 2]>),
+    Uint16x2(Vec<[u16; 2]>),
+    Unorm16x2(Vec<[u16; 2]>),
+    Sint16x4(Vec<[i16; 4]>),
+    Snorm16x4(Vec<[i16; 4]>),
+    Uint16x4(Vec<[u16; 4]>),
+    Unorm16x4(Vec<[u16; 4]>),
+    Sint8x2(Vec<[i8; 2]>),
+    Snorm8x2(Vec<[i8; 2]>),
+    Uint8x2(Vec<[u8; 2]>),
+    Unorm8x2(Vec<[u8; 2]>),
+    Sint8x4(Vec<[i8; 4]>),
+    Snorm8x4(Vec<[i8; 4]>),
+    Uint8x4(Vec<[u8; 4]>),
+    Unorm8x4(Vec<[u8; 4]>),
 }
 
 impl VertexAttributeValues {
@@ -44,19 +59,34 @@ impl VertexAttributeValues {
     /// mesh, all of the VertexAttributeValues must have the same length.
     pub fn len(&self) -> usize {
         match *self {
-            VertexAttributeValues::Float(ref values) => values.len(),
-            VertexAttributeValues::Int(ref values) => values.len(),
-            VertexAttributeValues::Uint(ref values) => values.len(),
-            VertexAttributeValues::Float2(ref values) => values.len(),
-            VertexAttributeValues::Int2(ref values) => values.len(),
-            VertexAttributeValues::Uint2(ref values) => values.len(),
-            VertexAttributeValues::Float3(ref values) => values.len(),
-            VertexAttributeValues::Int3(ref values) => values.len(),
-            VertexAttributeValues::Uint3(ref values) => values.len(),
-            VertexAttributeValues::Float4(ref values) => values.len(),
-            VertexAttributeValues::Int4(ref values) => values.len(),
-            VertexAttributeValues::Uint4(ref values) => values.len(),
-            VertexAttributeValues::Uchar4Norm(ref values) => values.len(),
+            VertexAttributeValues::Float32(ref values) => values.len(),
+            VertexAttributeValues::Sint32(ref values) => values.len(),
+            VertexAttributeValues::Uint32(ref values) => values.len(),
+            VertexAttributeValues::Float32x2(ref values) => values.len(),
+            VertexAttributeValues::Sint32x2(ref values) => values.len(),
+            VertexAttributeValues::Uint32x2(ref values) => values.len(),
+            VertexAttributeValues::Float32x3(ref values) => values.len(),
+            VertexAttributeValues::Sint32x3(ref values) => values.len(),
+            VertexAttributeValues::Uint32x3(ref values) => values.len(),
+            VertexAttributeValues::Float32x4(ref values) => values.len(),
+            VertexAttributeValues::Sint32x4(ref values) => values.len(),
+            VertexAttributeValues::Uint32x4(ref values) => values.len(),
+            VertexAttributeValues::Sint16x2(ref values) => values.len(),
+            VertexAttributeValues::Snorm16x2(ref values) => values.len(),
+            VertexAttributeValues::Uint16x2(ref values) => values.len(),
+            VertexAttributeValues::Unorm16x2(ref values) => values.len(),
+            VertexAttributeValues::Sint16x4(ref values) => values.len(),
+            VertexAttributeValues::Snorm16x4(ref values) => values.len(),
+            VertexAttributeValues::Uint16x4(ref values) => values.len(),
+            VertexAttributeValues::Unorm16x4(ref values) => values.len(),
+            VertexAttributeValues::Sint8x2(ref values) => values.len(),
+            VertexAttributeValues::Snorm8x2(ref values) => values.len(),
+            VertexAttributeValues::Uint8x2(ref values) => values.len(),
+            VertexAttributeValues::Unorm8x2(ref values) => values.len(),
+            VertexAttributeValues::Sint8x4(ref values) => values.len(),
+            VertexAttributeValues::Snorm8x4(ref values) => values.len(),
+            VertexAttributeValues::Uint8x4(ref values) => values.len(),
+            VertexAttributeValues::Unorm8x4(ref values) => values.len(),
         }
     }
 
@@ -65,24 +95,46 @@ impl VertexAttributeValues {
         self.len() == 0
     }
 
+    fn as_float3(&self) -> Option<&[[f32; 3]]> {
+        match self {
+            VertexAttributeValues::Float32x3(values) => Some(values),
+            _ => None,
+        }
+    }
+
     // TODO: add vertex format as parameter here and perform type conversions
     /// Flattens the VertexAttributeArray into a sequence of bytes. This is
     /// useful for serialization and sending to the GPU.
     pub fn get_bytes(&self) -> &[u8] {
         match self {
-            VertexAttributeValues::Float(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Int(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Uint(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Float2(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Int2(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Uint2(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Float3(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Int3(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Uint3(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Float4(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Int4(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Uint4(values) => values.as_slice().as_bytes(),
-            VertexAttributeValues::Uchar4Norm(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Float32(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint32(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint32(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Float32x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint32x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint32x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Float32x3(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint32x3(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint32x3(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Float32x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint32x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint32x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint16x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Snorm16x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint16x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Unorm16x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint16x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Snorm16x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint16x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Unorm16x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint8x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Snorm8x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint8x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Unorm8x2(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Sint8x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Snorm8x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Uint8x4(values) => values.as_slice().as_bytes(),
+            VertexAttributeValues::Unorm8x4(values) => values.as_slice().as_bytes(),
         }
     }
 }
@@ -90,98 +142,35 @@ impl VertexAttributeValues {
 impl From<&VertexAttributeValues> for VertexFormat {
     fn from(values: &VertexAttributeValues) -> Self {
         match values {
-            VertexAttributeValues::Float(_) => VertexFormat::Float,
-            VertexAttributeValues::Int(_) => VertexFormat::Int,
-            VertexAttributeValues::Uint(_) => VertexFormat::Uint,
-            VertexAttributeValues::Float2(_) => VertexFormat::Float2,
-            VertexAttributeValues::Int2(_) => VertexFormat::Int2,
-            VertexAttributeValues::Uint2(_) => VertexFormat::Uint2,
-            VertexAttributeValues::Float3(_) => VertexFormat::Float3,
-            VertexAttributeValues::Int3(_) => VertexFormat::Int3,
-            VertexAttributeValues::Uint3(_) => VertexFormat::Uint3,
-            VertexAttributeValues::Float4(_) => VertexFormat::Float4,
-            VertexAttributeValues::Int4(_) => VertexFormat::Int4,
-            VertexAttributeValues::Uint4(_) => VertexFormat::Uint4,
-            VertexAttributeValues::Uchar4Norm(_) => VertexFormat::Uchar4Norm,
+            VertexAttributeValues::Float32(_) => VertexFormat::Float32,
+            VertexAttributeValues::Sint32(_) => VertexFormat::Sint32,
+            VertexAttributeValues::Uint32(_) => VertexFormat::Uint32,
+            VertexAttributeValues::Float32x2(_) => VertexFormat::Float32x2,
+            VertexAttributeValues::Sint32x2(_) => VertexFormat::Sint32x2,
+            VertexAttributeValues::Uint32x2(_) => VertexFormat::Uint32x2,
+            VertexAttributeValues::Float32x3(_) => VertexFormat::Float32x3,
+            VertexAttributeValues::Sint32x3(_) => VertexFormat::Sint32x3,
+            VertexAttributeValues::Uint32x3(_) => VertexFormat::Uint32x3,
+            VertexAttributeValues::Float32x4(_) => VertexFormat::Float32x4,
+            VertexAttributeValues::Sint32x4(_) => VertexFormat::Sint32x4,
+            VertexAttributeValues::Uint32x4(_) => VertexFormat::Uint32x4,
+            VertexAttributeValues::Sint16x2(_) => VertexFormat::Sint16x2,
+            VertexAttributeValues::Snorm16x2(_) => VertexFormat::Snorm16x2,
+            VertexAttributeValues::Uint16x2(_) => VertexFormat::Uint16x2,
+            VertexAttributeValues::Unorm16x2(_) => VertexFormat::Unorm16x2,
+            VertexAttributeValues::Sint16x4(_) => VertexFormat::Sint16x4,
+            VertexAttributeValues::Snorm16x4(_) => VertexFormat::Snorm16x4,
+            VertexAttributeValues::Uint16x4(_) => VertexFormat::Uint16x4,
+            VertexAttributeValues::Unorm16x4(_) => VertexFormat::Unorm16x4,
+            VertexAttributeValues::Sint8x2(_) => VertexFormat::Sint8x2,
+            VertexAttributeValues::Snorm8x2(_) => VertexFormat::Snorm8x2,
+            VertexAttributeValues::Uint8x2(_) => VertexFormat::Uint8x2,
+            VertexAttributeValues::Unorm8x2(_) => VertexFormat::Unorm8x2,
+            VertexAttributeValues::Sint8x4(_) => VertexFormat::Sint8x4,
+            VertexAttributeValues::Snorm8x4(_) => VertexFormat::Snorm8x4,
+            VertexAttributeValues::Uint8x4(_) => VertexFormat::Uint8x4,
+            VertexAttributeValues::Unorm8x4(_) => VertexFormat::Unorm8x4,
         }
-    }
-}
-
-impl From<Vec<f32>> for VertexAttributeValues {
-    fn from(vec: Vec<f32>) -> Self {
-        VertexAttributeValues::Float(vec)
-    }
-}
-
-impl From<Vec<i32>> for VertexAttributeValues {
-    fn from(vec: Vec<i32>) -> Self {
-        VertexAttributeValues::Int(vec)
-    }
-}
-
-impl From<Vec<u32>> for VertexAttributeValues {
-    fn from(vec: Vec<u32>) -> Self {
-        VertexAttributeValues::Uint(vec)
-    }
-}
-
-impl From<Vec<[f32; 2]>> for VertexAttributeValues {
-    fn from(vec: Vec<[f32; 2]>) -> Self {
-        VertexAttributeValues::Float2(vec)
-    }
-}
-
-impl From<Vec<[i32; 2]>> for VertexAttributeValues {
-    fn from(vec: Vec<[i32; 2]>) -> Self {
-        VertexAttributeValues::Int2(vec)
-    }
-}
-
-impl From<Vec<[u32; 2]>> for VertexAttributeValues {
-    fn from(vec: Vec<[u32; 2]>) -> Self {
-        VertexAttributeValues::Uint2(vec)
-    }
-}
-
-impl From<Vec<[f32; 3]>> for VertexAttributeValues {
-    fn from(vec: Vec<[f32; 3]>) -> Self {
-        VertexAttributeValues::Float3(vec)
-    }
-}
-
-impl From<Vec<[i32; 3]>> for VertexAttributeValues {
-    fn from(vec: Vec<[i32; 3]>) -> Self {
-        VertexAttributeValues::Int3(vec)
-    }
-}
-
-impl From<Vec<[u32; 3]>> for VertexAttributeValues {
-    fn from(vec: Vec<[u32; 3]>) -> Self {
-        VertexAttributeValues::Uint3(vec)
-    }
-}
-
-impl From<Vec<[f32; 4]>> for VertexAttributeValues {
-    fn from(vec: Vec<[f32; 4]>) -> Self {
-        VertexAttributeValues::Float4(vec)
-    }
-}
-
-impl From<Vec<[i32; 4]>> for VertexAttributeValues {
-    fn from(vec: Vec<[i32; 4]>) -> Self {
-        VertexAttributeValues::Int4(vec)
-    }
-}
-
-impl From<Vec<[u32; 4]>> for VertexAttributeValues {
-    fn from(vec: Vec<[u32; 4]>) -> Self {
-        VertexAttributeValues::Uint4(vec)
-    }
-}
-
-impl From<Vec<[u8; 4]>> for VertexAttributeValues {
-    fn from(vec: Vec<[u8; 4]>) -> Self {
-        VertexAttributeValues::Uchar4Norm(vec)
     }
 }
 
@@ -369,6 +358,88 @@ impl Mesh {
 
         attributes_interleaved_buffer
     }
+
+    /// Duplicates the vertex attributes so that no vertices are shared.
+    ///
+    /// This can dramatically increase the vertex count, so make sure this is what you want.
+    /// Does nothing if no [Indices] are set.
+    pub fn duplicate_vertices(&mut self) {
+        fn duplicate<T: Copy>(values: &[T], indices: impl Iterator<Item = usize>) -> Vec<T> {
+            indices.map(|i| values[i]).collect()
+        }
+
+        assert!(
+            matches!(self.primitive_topology, PrimitiveTopology::TriangleList),
+            "can only duplicate vertices for `TriangleList`s"
+        );
+
+        let indices = match self.indices.take() {
+            Some(indices) => indices,
+            None => return,
+        };
+        for (_, attributes) in self.attributes.iter_mut() {
+            let indices = indices.iter();
+            match attributes {
+                VertexAttributeValues::Float32(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint32(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint32(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Float32x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint32x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint32x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Float32x3(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint32x3(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint32x3(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint32x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint32x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Float32x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint16x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Snorm16x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint16x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Unorm16x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint16x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Snorm16x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint16x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Unorm16x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint8x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Snorm8x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint8x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Unorm8x2(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Sint8x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Snorm8x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Uint8x4(vec) => *vec = duplicate(&vec, indices),
+                VertexAttributeValues::Unorm8x4(vec) => *vec = duplicate(&vec, indices),
+            }
+        }
+    }
+
+    /// Calculates the [`Mesh::ATTRIBUTE_NORMAL`] of a mesh.
+    ///
+    /// Panics if [`Indices`] are set.
+    /// Consider calling [Mesh::duplicate_vertices] or export your mesh with normal attributes.
+    pub fn compute_flat_normals(&mut self) {
+        if self.indices().is_some() {
+            panic!("`compute_flat_normals` can't work on indexed geometry. Consider calling `Mesh::duplicate_vertices`.");
+        }
+
+        let positions = self
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .unwrap()
+            .as_float3()
+            .expect("`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
+
+        let normals: Vec<_> = positions
+            .chunks_exact(3)
+            .map(|p| face_normal(p[0], p[1], p[2]))
+            .flat_map(|normal| std::array::IntoIter::new([normal, normal, normal]))
+            .collect();
+
+        self.set_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    }
+}
+
+fn face_normal(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> [f32; 3] {
+    let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
+    (b - a).cross(c - a).normalize().into()
 }
 
 fn remove_resource_save(

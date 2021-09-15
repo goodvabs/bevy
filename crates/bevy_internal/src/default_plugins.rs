@@ -13,6 +13,9 @@ impl PluginGroup for DefaultPlugins {
         group.add(bevy_asset::AssetPlugin::default());
         group.add(bevy_scene::ScenePlugin::default());
 
+        #[cfg(feature = "bevy_animation_rig")]
+        group.add(bevy_animation_rig::AnimationRigPlugin::default());
+
         #[cfg(feature = "bevy_render")]
         group.add(bevy_render::RenderPlugin::default());
 

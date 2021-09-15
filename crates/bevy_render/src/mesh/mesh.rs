@@ -1,3 +1,5 @@
+mod conversions;
+
 use crate::{
     pipeline::{IndexFormat, PrimitiveTopology, RenderPipelines, VertexFormat},
     renderer::{BufferInfo, BufferUsage, RenderResourceContext, RenderResourceId},
@@ -181,6 +183,29 @@ impl From<&VertexAttributeValues> for VertexFormat {
 pub enum Indices {
     U16(Vec<u16>),
     U32(Vec<u32>),
+}
+
+impl Indices {
+    fn iter(&self) -> impl Iterator<Item = usize> + '_ {
+        match self {
+            Indices::U16(vec) => IndicesIter::U16(vec.iter()),
+            Indices::U32(vec) => IndicesIter::U32(vec.iter()),
+        }
+    }
+}
+enum IndicesIter<'a> {
+    U16(std::slice::Iter<'a, u16>),
+    U32(std::slice::Iter<'a, u32>),
+}
+impl Iterator for IndicesIter<'_> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            IndicesIter::U16(iter) => iter.next().map(|val| *val as usize),
+            IndicesIter::U32(iter) => iter.next().map(|val| *val as usize),
+        }
+    }
 }
 
 impl From<&Indices> for IndexFormat {

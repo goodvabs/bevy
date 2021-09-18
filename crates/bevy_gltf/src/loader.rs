@@ -5,7 +5,6 @@ use bevy_asset::{
 };
 use bevy_core::Name;
 use bevy_ecs::{entity::Entity, world::World};
-use bevy_log::warn;
 use bevy_math::Mat4;
 use bevy_pbr::{
     prelude::{PbrBundle, StandardMaterial},
@@ -26,18 +25,14 @@ use bevy_transform::{
     hierarchy::{BuildWorldChildren, WorldChildBuilder},
     prelude::{GlobalTransform, Transform},
 };
-use gltf::{
-    mesh::Mode,
-    texture::{MagFilter, MinFilter, WrappingMode},
-    Material, Primitive,
-};
+use gltf::{Material, Primitive, animation::{Channel, util::ReadOutputs}, mesh::Mode, texture::{MagFilter, MinFilter, WrappingMode}};
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
 };
 use thiserror::Error;
 
-use crate::{Gltf, GltfNode};
+use crate::{Gltf, animation::*, GltfNode};
 
 /// An error that occurs when loading a GLTF file
 #[derive(Error, Debug)]
@@ -297,14 +292,87 @@ async fn load_gltf<'a, 'b>(
             )
         })
         .collect();
+    
+    // Load GltfAnimations and track targeted nodes.
+    //
+    // Later, when scenes are spawned, node entities targeted by animations will receive GltfAnimTargetInfo components.
+    let mut animations = vec![];
+    let mut named_animations = HashMap::new();
+    let mut animation_channel_targets = HashMap::new();
+    let mut anim_target_info_map = HashMap::new();
+    let mut anim_target_entity_map = HashMap::new();
+    for (anim_idx, gltf_animation) in gltf.animations().enumerate() {
+        let mut anim_channels = vec![];
+        for (channel_idx, gltf_channel) in gltf_animation.channels().enumerate() {
+            let target_gltf_node = gltf_channel.target().node();
+
+            let channel_target = GltfAnimTarget {
+                node: nodes[target_gltf_node.index()].clone(),
+                path: gltf_channel.target().property().into()
+            };
+            
+            // Track animation targets for use later when spawning nodes.
+            animation_channel_targets.insert((anim_idx, channel_idx), target_gltf_node);
+
+            let channel = GltfAnimChannel {
+                target: channel_target,
+                sampler: {
+                    let reader = gltf_channel
+                        .reader(|buffer| Some(&buffer_data[buffer.index()]));
+                    let input_keyframe_times: Vec<f32> = reader
+                        .read_inputs()
+                        .unwrap()
+                        .collect();
+                    let output_values: GltfAnimOutputValues = reader
+                        .read_outputs()
+                        .unwrap()
+                        .into();
+
+                    GltfAnimSampler {
+                        input: GltfAnimKeyframeTimes(input_keyframe_times),
+                        interpolation: gltf_channel.sampler().interpolation().into(),
+                        output: output_values,
+                    }
+                },
+            };
+            
+            anim_channels.push(channel);
+        }
+        let animation = GltfAnimation {
+            channels: anim_channels,
+        };
+
+        let handle = load_context.set_labeled_asset(
+            &animation_label(&gltf_animation),
+            LoadedAsset::new(animation)
+        );
+        if let Some(animation_name) = gltf_animation.name() {
+            named_animations.insert(animation_name.to_string(), handle.clone());
+        }
+        animations.push(handle);
+    }
+
+    // For animation, invert the channel targets map to map from each Gltf target node index to every animation-channel pair that targets that node.
+    let mut node_animation_targets = HashMap::new();
+    for ((anim_idx, channel_idx), target_gltf_node) in &animation_channel_targets {
+        // GltfAnimTargetInfo wants a Gltf<Handle>, but it doesn't exist yet.
+        // Instead we just track the animation and channel indices and we'll
+        // spawn GltfAnimTargetInfo after the Gltf handle
+        node_animation_targets.insert(target_gltf_node.index(), (*anim_idx, *channel_idx));
+    }
+    for (target_gltf_node_idx, animation_targets) in node_animation_targets {
+        anim_target_info_map.insert(target_gltf_node_idx, animation_targets);
+    }
 
     let mut scenes = vec![];
     let mut named_scenes = HashMap::new();
+    let mut loaded_scene_labels = vec![];
     for scene in gltf.scenes() {
         let mut err = None;
         let mut world = World::default();
         let mut node_index_to_entity_map = HashMap::new();
         let mut entity_to_skin_index_map = HashMap::new();
+        let scene_idx = scene.index();
 
         world
             .spawn()
@@ -318,6 +386,9 @@ async fn load_gltf<'a, 'b>(
                         &buffer_data,
                         &mut node_index_to_entity_map,
                         &mut entity_to_skin_index_map,
+                        &mut anim_target_info_map,
+                        scene_idx,
+                        &mut anim_target_entity_map,
                     );
                     if result.is_err() {
                         err = Some(result);
@@ -343,29 +414,64 @@ async fn load_gltf<'a, 'b>(
             ));
         }
 
+        let loaded_scene_label = scene_label(&scene);
+        let loaded_scene = Scene::new(world);
         let scene_handle = load_context
-            .set_labeled_asset(&scene_label(&scene), LoadedAsset::new(Scene::new(world)));
+            .set_labeled_asset(&loaded_scene_label, LoadedAsset::new(loaded_scene));
 
         if let Some(name) = scene.name() {
             named_scenes.insert(name.to_string(), scene_handle.clone());
         }
         scenes.push(scene_handle);
+
+        // Store scene references for animation support after gltf_handle is created.
+        loaded_scene_labels.push(loaded_scene_label.clone());
     }
 
-    load_context.set_default_asset(LoadedAsset::new(Gltf {
-        default_scene: gltf
-            .default_scene()
-            .and_then(|scene| scenes.get(scene.index()))
-            .cloned(),
-        scenes,
-        named_scenes,
-        meshes,
-        named_meshes,
-        materials,
-        named_materials,
-        nodes,
-        named_nodes,
-    }));
+    let gltf_label = gltf_label();
+    println!("LOADING GLTF NOW WITH LABEL: {}", gltf_label);
+    let gltf_handle = load_context.set_labeled_asset(
+        &gltf_label,
+        LoadedAsset::new(Gltf {
+            default_scene: gltf
+                .default_scene()
+                .and_then(|scene| scenes.get(scene.index()))
+                .cloned(),
+            scenes,
+            named_scenes,
+            meshes,
+            named_meshes,
+            materials,
+            named_materials,
+            nodes,
+            named_nodes,
+            animations,
+            named_animations
+        }
+    ));
+
+
+    // Animation hack: Now that the gltf_handle exists, use the channel and index data to modify the spawned scenes' animation targets with GltfAnimTargetInfo components.
+    for (node_entity_id, (scene_idx, (anim_idx, chan_idx))) in anim_target_entity_map {
+        let scene_label = &loaded_scene_labels[scene_idx];
+        let mut_scene: Option<&mut Scene> = load_context.get_mut_labeled_asset(scene_label.as_str());
+        if mut_scene.is_none() {
+            panic!("--- FAILED to get mut scene ---");
+        }
+        let mut_scene = mut_scene.unwrap();
+
+        let mut target_entity = mut_scene.world.entity_mut(node_entity_id);
+        let mut target_info = target_entity
+            .remove::<GltfAnimTargetInfo>()
+            .unwrap_or(GltfAnimTargetInfo {
+                gltf: gltf_handle.clone(),
+                animation_indices: vec![],
+                channel_indices: vec![],
+            });
+        target_info.animation_indices.push(anim_idx);
+        target_info.channel_indices.push(chan_idx);
+        target_entity.insert(target_info);
+    }
 
     Ok(())
 }
@@ -499,6 +605,9 @@ fn load_node(
     buffer_data: &[Vec<u8>],
     node_index_to_entity_map: &mut HashMap<usize, Entity>,
     entity_to_skin_index_map: &mut HashMap<Entity, usize>,
+    anim_target_map: &mut HashMap<usize, (usize, usize)>,
+    scene_idx: usize,
+    spawned_scene_anim_channel_map: &mut HashMap<Entity, (usize, (usize, usize))>,
 ) -> Result<(), GltfError> {
     let transform = gltf_node.transform();
     let mut gltf_error = None;
@@ -563,6 +672,13 @@ fn load_node(
     // Map node index to entity
     node_index_to_entity_map.insert(gltf_node.index(), node.id());
 
+    // Queue adding animation target info to entity
+    if let Some(anim_channel) = anim_target_map.get(&gltf_node.index()).clone() {
+        // let mut info = anim_target_info.clone();
+        spawned_scene_anim_channel_map.insert(node.id(), (scene_idx, *anim_channel));
+        // // // node.insert(info);
+    }
+
     node.with_children(|parent| {
         if let Some(mesh) = gltf_node.mesh() {
             // append primitives
@@ -614,6 +730,9 @@ fn load_node(
                 buffer_data,
                 node_index_to_entity_map,
                 entity_to_skin_index_map,
+                anim_target_map,
+                scene_idx,
+                spawned_scene_anim_channel_map,
             ) {
                 gltf_error = Some(err);
                 return;
@@ -625,6 +744,10 @@ fn load_node(
     } else {
         Ok(())
     }
+}
+
+fn gltf_label() -> String {
+    "Gltf".into()
 }
 
 fn mesh_label(mesh: &gltf::Mesh) -> String {
@@ -657,6 +780,10 @@ fn scene_label(scene: &gltf::Scene) -> String {
 
 fn skin_label(skin: &gltf::Skin) -> String {
     format!("Skin{}", skin.index())
+}
+
+fn animation_label(animation: &gltf::Animation) -> String {
+    format!("Animation{}/{}", animation.index(), animation.name().unwrap_or("NO_NAME"))
 }
 
 fn texture_sampler(texture: &gltf::Texture) -> SamplerDescriptor {

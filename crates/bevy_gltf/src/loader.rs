@@ -236,6 +236,10 @@ async fn load_gltf<'a, 'b>(
             named_nodes_intermediate.insert(name, node.index());
         }
     }
+    let nodes_raw = resolve_node_hierarchy(nodes_intermediate.clone())
+        .into_iter()
+        .map(|(_, node)| node.clone())
+        .collect::<Vec<GltfNode>>();
     let nodes = resolve_node_hierarchy(nodes_intermediate)
         .into_iter()
         .map(|(label, node)| load_context.set_labeled_asset(&label, LoadedAsset::new(node)))
@@ -301,10 +305,16 @@ async fn load_gltf<'a, 'b>(
     let mut animation_channel_targets = HashMap::new();
     let mut anim_target_info_map = HashMap::new();
     let mut anim_target_entity_map = HashMap::new();
+    let mut rest_poses = HashMap::new();
     for (anim_idx, gltf_animation) in gltf.animations().enumerate() {
         let mut anim_channels = vec![];
         for (channel_idx, gltf_channel) in gltf_animation.channels().enumerate() {
             let target_gltf_node = gltf_channel.target().node();
+
+            // Make sure we assign a rest pose for this node. This is identical no matter the animation/channel, so assigning this here is a little wasteful.
+            rest_poses.insert(target_gltf_node.index(),
+                nodes_raw[target_gltf_node.index()].transform
+            );
 
             let channel_target = GltfAnimTarget {
                 node: nodes[target_gltf_node.index()].clone(),
@@ -353,15 +363,18 @@ async fn load_gltf<'a, 'b>(
     }
 
     // For animation, invert the channel targets map to map from each Gltf target node index to every animation-channel pair that targets that node.
-    let mut node_animation_targets = HashMap::new();
+    // TODO: Isn't this just two steps that should be one step
     for ((anim_idx, channel_idx), target_gltf_node) in &animation_channel_targets {
+        let rest_pose = rest_poses.get(&target_gltf_node.index()).unwrap().clone();
+
         // GltfAnimTargetInfo wants a Gltf<Handle>, but it doesn't exist yet.
         // Instead we just track the animation and channel indices and we'll
         // spawn GltfAnimTargetInfo after the Gltf handle
-        node_animation_targets.insert(target_gltf_node.index(), (*anim_idx, *channel_idx));
-    }
-    for (target_gltf_node_idx, animation_targets) in node_animation_targets {
-        anim_target_info_map.insert(target_gltf_node_idx, animation_targets);
+        let (rest_pose, mut target_infos) = anim_target_info_map
+            .remove(&target_gltf_node.index())
+            .unwrap_or((rest_pose, vec![]));
+        target_infos.push((*anim_idx, *channel_idx));
+        anim_target_info_map.insert(target_gltf_node.index(), (rest_pose, target_infos));
     }
 
     let mut scenes = vec![];
@@ -428,49 +441,61 @@ async fn load_gltf<'a, 'b>(
         loaded_scene_labels.push(loaded_scene_label.clone());
     }
 
-    let gltf_label = gltf_label();
-    println!("LOADING GLTF NOW WITH LABEL: {}", gltf_label);
-    let gltf_handle = load_context.set_labeled_asset(
-        &gltf_label,
-        LoadedAsset::new(Gltf {
-            default_scene: gltf
-                .default_scene()
-                .and_then(|scene| scenes.get(scene.index()))
-                .cloned(),
-            scenes,
-            named_scenes,
-            meshes,
-            named_meshes,
-            materials,
-            named_materials,
-            nodes,
-            named_nodes,
-            animations,
-            named_animations
-        }
-    ));
-
+    load_context.set_default_asset(LoadedAsset::new(Gltf {
+        default_scene: gltf
+            .default_scene()
+            .and_then(|scene| scenes.get(scene.index()))
+            .cloned(),
+        scenes,
+        named_scenes,
+        meshes,
+        named_meshes,
+        materials,
+        named_materials,
+        nodes,
+        named_nodes,
+        animations,
+        named_animations
+    }));
+    let gltf_handle = load_context.get_handle(AssetPath::new_ref(load_context.path(), None));
 
     // Animation hack: Now that the gltf_handle exists, use the channel and index data to modify the spawned scenes' animation targets with GltfAnimTargetInfo components.
-    for (node_entity_id, (scene_idx, (anim_idx, chan_idx))) in anim_target_entity_map {
-        let scene_label = &loaded_scene_labels[scene_idx];
-        let mut_scene: Option<&mut Scene> = load_context.get_mut_labeled_asset(scene_label.as_str());
-        if mut_scene.is_none() {
-            panic!("--- FAILED to get mut scene ---");
+    for (node_entity_id, (scene_idx, rest_xfm, target_details)) in anim_target_entity_map {
+        for (anim_idx, chan_idx) in target_details {
+            let scene_label = &loaded_scene_labels[scene_idx];
+            let mut_scene: Option<&mut Scene> = load_context.get_mut_labeled_asset(scene_label.as_str());
+            let mut_scene = mut_scene.unwrap();
+            // // mut_scene.world.increment_change_tick();
+            let mut target_entity = mut_scene.world.entity_mut(node_entity_id);
+    
+            let mut target_info = target_entity.get_mut::<GltfAnimTargetInfo>();
+            if target_info.is_none() {
+                // println!("Adding new target info: anim {} chan {}", anim_idx, chan_idx);
+                target_entity.insert(GltfAnimTargetInfo {
+                    gltf: gltf_handle.clone(),
+                    rest_pose: rest_xfm,
+                    animation_indices: vec![anim_idx],
+                    channel_indices: vec![chan_idx],
+                });
+            } else {
+                // println!("Pushing to target info: anim {} chan {}", anim_idx, chan_idx);
+                // let foo = target_info.as_mut();
+                // let foo = foo.unwrap();
+                target_info.as_mut().unwrap().animation_indices.push(anim_idx);
+                target_info.as_mut().unwrap().channel_indices.push(chan_idx);
+            }
+    
+            // // let mut target_info = target_entity
+            // //     .remove::<GltfAnimTargetInfo>()
+            // //     .unwrap_or(GltfAnimTargetInfo {
+            // //         gltf: gltf_handle.clone(),
+            // //         animation_indices: vec![],
+            // //         channel_indices: vec![],
+            // //     });
+            // // target_info.animation_indices.push(anim_idx);
+            // // target_info.channel_indices.push(chan_idx);
+            // // target_entity.insert(target_info);
         }
-        let mut_scene = mut_scene.unwrap();
-
-        let mut target_entity = mut_scene.world.entity_mut(node_entity_id);
-        let mut target_info = target_entity
-            .remove::<GltfAnimTargetInfo>()
-            .unwrap_or(GltfAnimTargetInfo {
-                gltf: gltf_handle.clone(),
-                animation_indices: vec![],
-                channel_indices: vec![],
-            });
-        target_info.animation_indices.push(anim_idx);
-        target_info.channel_indices.push(chan_idx);
-        target_entity.insert(target_info);
     }
 
     Ok(())
@@ -605,9 +630,9 @@ fn load_node(
     buffer_data: &[Vec<u8>],
     node_index_to_entity_map: &mut HashMap<usize, Entity>,
     entity_to_skin_index_map: &mut HashMap<Entity, usize>,
-    anim_target_map: &mut HashMap<usize, (usize, usize)>,
+    anim_target_map: &mut HashMap<usize, (Transform, Vec<(usize, usize)>)>,
     scene_idx: usize,
-    spawned_scene_anim_channel_map: &mut HashMap<Entity, (usize, (usize, usize))>,
+    spawned_scene_anim_channel_map: &mut HashMap<Entity, (usize, Transform, Vec<(usize, usize)>)>,
 ) -> Result<(), GltfError> {
     let transform = gltf_node.transform();
     let mut gltf_error = None;
@@ -673,11 +698,19 @@ fn load_node(
     node_index_to_entity_map.insert(gltf_node.index(), node.id());
 
     // Queue adding animation target info to entity
-    if let Some(anim_channel) = anim_target_map.get(&gltf_node.index()).clone() {
-        // let mut info = anim_target_info.clone();
-        spawned_scene_anim_channel_map.insert(node.id(), (scene_idx, *anim_channel));
-        // // // node.insert(info);
+    // let foo = anim_target_map.get(&gltf_node.index());
+    if let Some((rest_xfm, target_details)) = anim_target_map.get(&gltf_node.index()) {
+        for anim_channel in target_details {
+            // let mut info = anim_target_info.clone();
+            let (scene_idx, rest_xfm, mut target_details) = spawned_scene_anim_channel_map.remove(&node.id())
+                .unwrap_or((scene_idx, *rest_xfm, Vec::new()));
+            target_details.push(*anim_channel);
+            spawned_scene_anim_channel_map.insert(node.id(), (scene_idx, rest_xfm, target_details));
+            // // // node.insert(info);
+        }
     }
+    // // // if let Some(anim_channel) = anim_target_map.get(&gltf_node.index()).clone() {
+    // // // }
 
     node.with_children(|parent| {
         if let Some(mesh) = gltf_node.mesh() {

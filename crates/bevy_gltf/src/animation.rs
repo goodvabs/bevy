@@ -2,6 +2,7 @@
 use bevy_asset::{Handle, HandleId};
 use bevy_ecs::prelude::ReflectComponent;
 use bevy_math::{Quat, Vec3};
+use bevy_transform::components::Transform;
 use gltf::animation::{Interpolation, util::{MorphTargetWeights, ReadOutputs, Rotations}};
 
 use super::{Gltf, GltfNode};
@@ -32,6 +33,7 @@ use bevy_reflect::{Reflect, TypeUuid};
 #[reflect(Component)]
 pub struct GltfAnimTargetInfo {
     pub gltf: Handle<Gltf>,
+    pub rest_pose: Transform,
     pub animation_indices: Vec<usize>,
     pub channel_indices: Vec<usize>,
 }

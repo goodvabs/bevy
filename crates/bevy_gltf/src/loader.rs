@@ -25,7 +25,7 @@ use bevy_transform::{
     hierarchy::{BuildWorldChildren, WorldChildBuilder},
     prelude::{GlobalTransform, Transform},
 };
-use gltf::{Material, Primitive, animation::{Channel, util::ReadOutputs}, mesh::Mode, texture::{MagFilter, MinFilter, WrappingMode}};
+use gltf::{Material, Primitive, mesh::Mode, texture::{MagFilter, MinFilter, WrappingMode}};
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -308,7 +308,9 @@ async fn load_gltf<'a, 'b>(
     let mut rest_poses = HashMap::new();
     for (anim_idx, gltf_animation) in gltf.animations().enumerate() {
         let mut anim_channels = vec![];
-        for (channel_idx, gltf_channel) in gltf_animation.channels().enumerate() {
+        let mut earliest_keyframe_time = None;
+        let mut latest_keyframe_time = None;
+        for (chan_idx, gltf_channel) in gltf_animation.channels().enumerate() {
             let target_gltf_node = gltf_channel.target().node();
 
             // Make sure we assign a rest pose for this node. This is identical no matter the animation/channel, so assigning this here is a little wasteful.
@@ -322,34 +324,52 @@ async fn load_gltf<'a, 'b>(
             };
             
             // Track animation targets for use later when spawning nodes.
-            animation_channel_targets.insert((anim_idx, channel_idx), target_gltf_node);
+            animation_channel_targets.insert((anim_idx, chan_idx), target_gltf_node);
 
-            let channel = GltfAnimChannel {
-                target: channel_target,
-                sampler: {
-                    let reader = gltf_channel
-                        .reader(|buffer| Some(&buffer_data[buffer.index()]));
-                    let input_keyframe_times: Vec<f32> = reader
-                        .read_inputs()
-                        .unwrap()
-                        .collect();
-                    let output_values: GltfAnimOutputValues = reader
-                        .read_outputs()
-                        .unwrap()
-                        .into();
+            let (sampler, start_time, end_time) = {
+                let reader = gltf_channel
+                    .reader(|buffer| Some(&buffer_data[buffer.index()]));
+                let input_keyframe_times: Vec<f32> = reader
+                    .read_inputs()
+                    .unwrap()
+                    .collect();
+                let (start_time, end_time) = (
+                    *input_keyframe_times.first().unwrap(),
+                    *input_keyframe_times.last().unwrap()
+                );
+                let output_values: GltfAnimOutputValues = reader
+                    .read_outputs()
+                    .unwrap()
+                    .into();
 
+                (
                     GltfAnimSampler {
                         input: GltfAnimKeyframeTimes(input_keyframe_times),
                         interpolation: gltf_channel.sampler().interpolation().into(),
                         output: output_values,
-                    }
-                },
+                    },
+                    start_time,
+                    end_time
+                )
             };
-            
-            anim_channels.push(channel);
+
+            earliest_keyframe_time = Some(earliest_keyframe_time.unwrap_or(start_time).min(start_time));
+            latest_keyframe_time = Some(latest_keyframe_time.unwrap_or(end_time).max(end_time));
+
+            anim_channels.push(GltfAnimChannel {
+                target: channel_target,
+                sampler: sampler,
+                index: chan_idx,
+                start_time: start_time,
+                end_time: end_time
+            });
         }
         let animation = GltfAnimation {
             channels: anim_channels,
+            index: anim_idx,
+            name: gltf_animation.name().and_then(|s| Some(s.to_string())),
+            start_time: earliest_keyframe_time.unwrap(),
+            end_time: latest_keyframe_time.unwrap(),
         };
 
         let handle = load_context.set_labeled_asset(
@@ -365,16 +385,14 @@ async fn load_gltf<'a, 'b>(
     // For animation, invert the channel targets map to map from each Gltf target node index to every animation-channel pair that targets that node.
     // TODO: Isn't this just two steps that should be one step
     for ((anim_idx, channel_idx), target_gltf_node) in &animation_channel_targets {
-        let rest_pose = rest_poses.get(&target_gltf_node.index()).unwrap().clone();
-
         // GltfAnimTargetInfo wants a Gltf<Handle>, but it doesn't exist yet.
         // Instead we just track the animation and channel indices and we'll
         // spawn GltfAnimTargetInfo after the Gltf handle
-        let (rest_pose, mut target_infos) = anim_target_info_map
+        let mut target_infos = anim_target_info_map
             .remove(&target_gltf_node.index())
-            .unwrap_or((rest_pose, vec![]));
+            .unwrap_or(vec![]);
         target_infos.push((*anim_idx, *channel_idx));
-        anim_target_info_map.insert(target_gltf_node.index(), (rest_pose, target_infos));
+        anim_target_info_map.insert(target_gltf_node.index(), target_infos);
     }
 
     let mut scenes = vec![];
@@ -460,7 +478,7 @@ async fn load_gltf<'a, 'b>(
     let gltf_handle = load_context.get_handle(AssetPath::new_ref(load_context.path(), None));
 
     // Animation hack: Now that the gltf_handle exists, use the channel and index data to modify the spawned scenes' animation targets with GltfAnimTargetInfo components.
-    for (node_entity_id, (scene_idx, rest_xfm, target_details)) in anim_target_entity_map {
+    for (node_entity_id, (scene_idx, target_details)) in anim_target_entity_map {
         for (anim_idx, chan_idx) in target_details {
             let scene_label = &loaded_scene_labels[scene_idx];
             let mut_scene: Option<&mut Scene> = load_context.get_mut_labeled_asset(scene_label.as_str());
@@ -473,7 +491,6 @@ async fn load_gltf<'a, 'b>(
                 // println!("Adding new target info: anim {} chan {}", anim_idx, chan_idx);
                 target_entity.insert(GltfAnimTargetInfo {
                     gltf: gltf_handle.clone(),
-                    rest_pose: rest_xfm,
                     animation_indices: vec![anim_idx],
                     channel_indices: vec![chan_idx],
                 });
@@ -630,9 +647,9 @@ fn load_node(
     buffer_data: &[Vec<u8>],
     node_index_to_entity_map: &mut HashMap<usize, Entity>,
     entity_to_skin_index_map: &mut HashMap<Entity, usize>,
-    anim_target_map: &mut HashMap<usize, (Transform, Vec<(usize, usize)>)>,
+    anim_target_map: &mut HashMap<usize, Vec<(usize, usize)>>,
     scene_idx: usize,
-    spawned_scene_anim_channel_map: &mut HashMap<Entity, (usize, Transform, Vec<(usize, usize)>)>,
+    spawned_scene_anim_channel_map: &mut HashMap<Entity, (usize, Vec<(usize, usize)>)>,
 ) -> Result<(), GltfError> {
     let transform = gltf_node.transform();
     let mut gltf_error = None;
@@ -699,13 +716,13 @@ fn load_node(
 
     // Queue adding animation target info to entity
     // let foo = anim_target_map.get(&gltf_node.index());
-    if let Some((rest_xfm, target_details)) = anim_target_map.get(&gltf_node.index()) {
+    if let Some(target_details) = anim_target_map.get(&gltf_node.index()) {
         for anim_channel in target_details {
             // let mut info = anim_target_info.clone();
-            let (scene_idx, rest_xfm, mut target_details) = spawned_scene_anim_channel_map.remove(&node.id())
-                .unwrap_or((scene_idx, *rest_xfm, Vec::new()));
+            let (scene_idx, mut target_details) = spawned_scene_anim_channel_map.remove(&node.id())
+                .unwrap_or((scene_idx, Vec::new()));
             target_details.push(*anim_channel);
-            spawned_scene_anim_channel_map.insert(node.id(), (scene_idx, rest_xfm, target_details));
+            spawned_scene_anim_channel_map.insert(node.id(), (scene_idx, target_details));
             // // // node.insert(info);
         }
     }
@@ -777,10 +794,6 @@ fn load_node(
     } else {
         Ok(())
     }
-}
-
-fn gltf_label() -> String {
-    "Gltf".into()
 }
 
 fn mesh_label(mesh: &gltf::Mesh) -> String {

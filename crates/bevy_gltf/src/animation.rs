@@ -33,7 +33,6 @@ use bevy_reflect::{Reflect, TypeUuid};
 #[reflect(Component)]
 pub struct GltfAnimTargetInfo {
     pub gltf: Handle<Gltf>,
-    pub rest_pose: Transform,
     pub animation_indices: Vec<usize>,
     pub channel_indices: Vec<usize>,
 }
@@ -42,14 +41,40 @@ pub struct GltfAnimTargetInfo {
 #[derive(Debug, Clone, TypeUuid)]
 #[uuid = "cc71ba69-fc20-4665-b399-27da45618653"]
 pub struct GltfAnimation {
+    /// Animations target node properties through channels, each of which contains a target node, property, keyframe times, and per-keyframe values.
     pub channels: Vec<GltfAnimChannel>,
+    /// The index of this animation in the Gltf.
+    pub index: usize,
+    /// The name of this animation. Animations are not guaranteed to have names.
+    pub name: Option<String>,
+    pub(crate) start_time: f32,
+    pub(crate) end_time: f32,
+}
+impl GltfAnimation {
+    /// The time in seconds of the earliest keyframe among all channels in this animation.
+    pub fn start_time(&self) -> f32 { self.start_time }
+    /// The time in seconds of the latest keyframe among all channels in this animation.
+    pub fn end_time(&self) -> f32 { self.end_time }
+    /// The duration in seconds between the earliest and latest keyframes among all channels in this animation.
+    pub fn duration(&self) -> f32 { self.end_time - self.start_time }
 }
 
 /// Targets a single glTF-animatable property of a glTF node (position, rotation, scale, or morph target weight) and sampling data for converting animation time in seconds to the animated property value.
 #[derive(Debug, Clone)]
 pub struct GltfAnimChannel {
     pub target: GltfAnimTarget,
-    pub sampler: GltfAnimSampler
+    pub sampler: GltfAnimSampler,
+    pub index: usize,
+    pub(crate) start_time: f32,
+    pub(crate) end_time: f32, 
+}
+impl GltfAnimChannel {
+    /// The time in seconds of first keyframe in this channel.
+    pub fn start_time(&self) -> f32 { self.start_time }
+    /// The time in seconds of last keyframe in this channel.
+    pub fn end_time(&self) -> f32 { self.end_time }
+    /// The duration in seconds between the first and last keyframes in this channel.
+    pub fn duration(&self) -> f32 { self.end_time - self.start_time }
 }
 
 /// Contains a handle to the target GltfNode for animation and the animation path for the node (translation, rotation, scale, or morph target weight).

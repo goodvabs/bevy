@@ -1,3 +1,4 @@
+use bevy_reflect::FromReflect;
 use bevy_reflect::prelude::*;
 use bevy_reflect::Reflect;
 use bevy_utils::Duration;
@@ -23,7 +24,7 @@ use bevy_utils::Duration;
 /// assert!(stopwatch.paused());
 /// assert_eq!(stopwatch.elapsed_secs(), 0.0);
 /// ```
-#[derive(Clone, Debug, Default, Reflect)]
+#[derive(Clone, Debug, Default, Reflect, FromReflect)]
 #[reflect(Default)]
 pub struct Stopwatch {
     elapsed: Duration,
